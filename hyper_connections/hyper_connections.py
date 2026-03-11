@@ -64,9 +64,32 @@ def sinkhorn_log(logits, num_iters=10, tau=0.05):
     return torch.exp(Z + u.unsqueeze(1) + v.unsqueeze(0)) * n
 
 
-def zeropower_via_newtonschulz(X, steps=5, eps=1e-7, coeffs=(3.0, -3.2, 1.2)):
-    a, b, c = coeffs
+MUON_NS5_COEFFS = (3.4445, -4.7750, 2.0315)
 
+
+def _resolve_ns_coeff_schedule(steps, coeffs):
+    is_schedule = isinstance(coeffs, (tuple, list)) and len(coeffs) > 0 and isinstance(
+        coeffs[0], (tuple, list)
+    )
+
+    if is_schedule:
+        schedule = [tuple(step_coeffs) for step_coeffs in coeffs]
+        assert len(schedule) == steps, (
+            "when ns_coeffs is a per-step schedule, ns_steps must equal len(ns_coeffs)"
+        )
+        for i, step_coeffs in enumerate(schedule):
+            assert len(step_coeffs) == 3, f"ns_coeffs[{i}] must be a (a, b, c) triplet"
+        return schedule
+
+    assert len(coeffs) == 3, "ns_coeffs must be a single (a, b, c) triplet or a schedule"
+    return [tuple(coeffs)] * steps
+
+
+def zeropower_via_newtonschulz(X, steps=5, eps=1e-7, coeffs=MUON_NS5_COEFFS):
+    coeff_schedule = _resolve_ns_coeff_schedule(steps, coeffs)
+
+    # Muon-style normalization improves stability and often converges faster
+    # for the same step budget than using fixed scalar bounds.
     X = X / (X.norm() + eps)
 
     transpose = False
@@ -74,7 +97,7 @@ def zeropower_via_newtonschulz(X, steps=5, eps=1e-7, coeffs=(3.0, -3.2, 1.2)):
         X = X.T
         transpose = True
 
-    for _ in range(steps):
+    for a, b, c in coeff_schedule:
         A = X @ X.T
         B = b * A + c * A @ A
         X = a * X + B @ X
@@ -85,10 +108,18 @@ def zeropower_via_newtonschulz(X, steps=5, eps=1e-7, coeffs=(3.0, -3.2, 1.2)):
     return X
 
 
-def orthostochastic_project(
-    logits, ns_steps=5, ns_eps=1e-7, ns_coeffs=(3.0, -3.2, 1.2)
-):
+def orthogonal_project(logits, ns_steps=5, ns_eps=1e-7, ns_coeffs=MUON_NS5_COEFFS):
     O = zeropower_via_newtonschulz(logits, steps=ns_steps, eps=ns_eps, coeffs=ns_coeffs)
+    # Retraction to the orthogonal manifold improves numerical robustness
+    # across coefficient choices.
+    Q, _ = torch.linalg.qr(O)
+    return Q
+
+
+def orthostochastic_project(
+    logits, ns_steps=5, ns_eps=1e-7, ns_coeffs=MUON_NS5_COEFFS
+):
+    O = orthogonal_project(logits, ns_steps=ns_steps, ns_eps=ns_eps, ns_coeffs=ns_coeffs)
     return O.square()
 
 
@@ -232,7 +263,7 @@ class HyperConnections(Module):
         mhc_h_res_proj="sinkhorn",
         ns_steps=5,
         ns_eps=1e-7,
-        ns_coeffs=(3.0, -3.2, 1.2),
+        ns_coeffs=MUON_NS5_COEFFS,
         mhc_residual_identity_mix=False,
         mhc_residual_alpha=0.01,
     ):
@@ -343,7 +374,12 @@ class HyperConnections(Module):
             assert mhc_h_res_proj in (
                 "sinkhorn",
                 "orthostochastic",
-            ), "mhc_h_res_proj must be 'sinkhorn' or 'orthostochastic'"
+                "orthogonal",
+                "identity",
+            ), (
+                "mhc_h_res_proj must be one of "
+                "'sinkhorn', 'orthostochastic', 'orthogonal', 'identity'"
+            )
 
             H_res_init = torch.full((num_residual_streams, num_residual_streams), -8.0)
             H_res_init.fill_diagonal_(0.0)
@@ -401,6 +437,15 @@ class HyperConnections(Module):
                     ns_eps=self.ns_eps,
                     ns_coeffs=self.ns_coeffs,
                 )
+            elif self.mhc_h_res_proj == "orthogonal":
+                S = orthogonal_project(
+                    self.H_res_logits,
+                    ns_steps=self.ns_steps,
+                    ns_eps=self.ns_eps,
+                    ns_coeffs=self.ns_coeffs,
+                )
+            elif self.mhc_h_res_proj == "identity":
+                S = torch.eye(streams, device=residuals.device, dtype=residuals.dtype)
             else:
                 S = sinkhorn_log(self.H_res_logits, self.sinkhorn_iters, self.sinkhorn_tau)
 

@@ -175,7 +175,7 @@ class GPTConfig:
         self.mhc_h_res_proj = kwargs.pop("mhc_h_res_proj", "sinkhorn")
         self.ns_steps = kwargs.pop("ns_steps", 5)
         self.ns_eps = kwargs.pop("ns_eps", 1e-7)
-        self.ns_coeffs = kwargs.pop("ns_coeffs", (3.0, -3.2, 1.2))
+        self.ns_coeffs = kwargs.pop("ns_coeffs", (3.4445, -4.7750, 2.0315))
         self.mhc_residual_identity_mix = kwargs.pop("mhc_residual_identity_mix", False)
         self.mhc_residual_alpha = kwargs.pop("mhc_residual_alpha", 0.01)
         self.v_residual = kwargs.pop("v_residual", False)

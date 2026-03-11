@@ -437,3 +437,84 @@ def test_hc_channel_first_width_connection_applies_residual_mixing():
 
     torch.testing.assert_close(branch_input, torch.zeros(batch, dim, h, w))
     torch.testing.assert_close(residuals, torch.cat((x1, x0), dim=0))
+
+
+def test_mhc_orthogonal_H_res_constraints():
+    from hyper_connections.hyper_connections import HyperConnections, orthogonal_project
+
+    hc = HyperConnections(
+        num_residual_streams=4,
+        dim=64,
+        mhc=True,
+        mhc_h_res_proj="orthogonal",
+    )
+
+    H_res = orthogonal_project(
+        hc.H_res_logits,
+        ns_steps=hc.ns_steps,
+        ns_eps=hc.ns_eps,
+        ns_coeffs=hc.ns_coeffs,
+    )
+
+    I = torch.eye(4, device=H_res.device, dtype=H_res.dtype)
+    torch.testing.assert_close(H_res.T @ H_res, I, rtol=1e-2, atol=1e-2)
+
+
+def test_mhc_identity_H_res_constraints():
+    from einops import rearrange
+
+    from hyper_connections.hyper_connections import HyperConnections
+
+    hc = HyperConnections(
+        num_residual_streams=4,
+        dim=64,
+        mhc=True,
+        mhc_h_res_proj="identity",
+    )
+
+    x = torch.randn(8, 8, 64)
+    _, residuals_out, _ = hc.width_connection(x)
+
+    expected = rearrange(x, "(b s) t d -> b t s d", s=4)
+    actual = rearrange(residuals_out, "(b s) t d -> b t s d", s=4)
+
+    torch.testing.assert_close(actual, expected)
+
+
+def test_newton_schulz_supports_per_step_schedule():
+    from hyper_connections.hyper_connections import zeropower_via_newtonschulz
+
+    x = torch.randn(4, 4)
+    coeff_schedule = (
+        (7.2086, -15.5131, 9.0178),
+        (3.9623, -2.5813, 0.4542),
+        (3.9466, -2.5765, 0.4544),
+    )
+
+    out = zeropower_via_newtonschulz(
+        x,
+        steps=len(coeff_schedule),
+        coeffs=coeff_schedule,
+    )
+
+    assert out.shape == x.shape
+
+
+def test_newton_schulz_rejects_mismatched_schedule_len():
+    from hyper_connections.hyper_connections import zeropower_via_newtonschulz
+
+    x = torch.randn(4, 4)
+    coeff_schedule = (
+        (3.0, -3.2, 1.2),
+        (3.0, -3.2, 1.2),
+    )
+
+    with pytest.raises(AssertionError):
+        zeropower_via_newtonschulz(x, steps=3, coeffs=coeff_schedule)
+
+
+def test_mhc_default_ns_coeffs_use_muon5_triplet():
+    from hyper_connections.hyper_connections import HyperConnections, MUON_NS5_COEFFS
+
+    hc = HyperConnections(num_residual_streams=4, dim=64, mhc=True)
+    assert tuple(hc.ns_coeffs) == MUON_NS5_COEFFS

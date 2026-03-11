@@ -1,12 +1,8 @@
-# FineWeb10B with mHC (4 streams)
+# FineWeb10B with mHC (4 streams) and orthogonal H_res
 # ~20M param GPT-2 style model
-#
-# Usage:
-#   python train.py config/train_fineweb10B_mhc.py
-#   torchrun --standalone --nproc_per_node=4 train.py config/train_fineweb10B_mhc.py
 
-out_dir = "out-fineweb10B-mhc"
-wandb_run_name = "mhc"
+out_dir = "out-fineweb10B-mhc-orthogonal"
+wandb_run_name = "mhc-orthogonal"
 
 dataset = "fineweb10B"
 
@@ -47,7 +43,7 @@ hc_disable = False
 mhc = True
 sinkhorn_iters = 10
 sinkhorn_tau = 0.05
-mhc_h_res_proj = "sinkhorn"
+mhc_h_res_proj = "orthogonal"
 ns_steps = 5
 ns_eps = 1e-7
 ns_coeffs = (3.4445, -4.7750, 2.0315)

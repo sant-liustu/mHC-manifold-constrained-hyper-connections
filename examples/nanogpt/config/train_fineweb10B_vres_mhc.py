@@ -54,7 +54,7 @@ sinkhorn_tau = 0.05
 mhc_h_res_proj = "sinkhorn"
 ns_steps = 5
 ns_eps = 1e-7
-ns_coeffs = (3.0, -3.2, 1.2)
+ns_coeffs = (3.4445, -4.7750, 2.0315)
 
 # value residual (unconstrained)
 v_residual = True

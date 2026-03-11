@@ -75,6 +75,10 @@ def test_nanogpt_run_contract_smoke(tmp_path: Path):
     env.pop("WORLD_SIZE", None)
     env["OMP_NUM_THREADS"] = "1"
     env["MKL_NUM_THREADS"] = "1"
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{repo_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(repo_dir)
+    )
 
     with stdout_log.open("wb") as f:
         proc = subprocess.run(
