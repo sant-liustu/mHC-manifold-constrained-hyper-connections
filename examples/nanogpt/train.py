@@ -909,5 +909,10 @@ finally:
         except Exception:
             pass
 
-    if ddp:
-        dist.destroy_process_group()
+    if ddp and dist.is_initialized():
+        try:
+            # Keep all ranks alive until rank 0 finishes local artifact writes.
+            if run_error is None:
+                dist.barrier()
+        finally:
+            dist.destroy_process_group()
